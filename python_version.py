@@ -22,7 +22,7 @@ import hashlib
 import re
 import time
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 try:
     import requests
@@ -147,6 +147,120 @@ def get_latest_python_info() -> Tuple[Optional[str], Optional[str]]:
     except Exception as e:
         print(f"Error: Unexpected error while fetching Python info: {e}")
         return None, None
+
+
+def get_active_python_releases() -> List[dict]:
+    """Fetch active/supported Python releases from python.org"""
+    URL = "https://www.python.org/downloads/"
+    releases = []
+    
+    try:
+        response = requests.get(URL, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Parse the page text to extract release info
+        # The structure is: version, status, Download, first_release, end_support, PEP
+        text = soup.get_text()
+        lines = [l.strip() for l in text.split('\n') if l.strip()]
+        
+        # Find start of active releases (after "Release schedule" header line)
+        start_idx = None
+        for i, line in enumerate(lines):
+            if line == "Release schedule":
+                start_idx = i + 1
+                break
+        
+        if start_idx:
+            # Parse in groups: version, status, Download, first_release, end_support, PEP
+            i = start_idx
+            while i < len(lines) - 5:
+                line = lines[i]
+                # Check if this line is a version series (e.g., "3.14")
+                if re.match(r'^\d+\.\d+$', line):
+                    series = line
+                    status = lines[i + 1] if i + 1 < len(lines) else ""
+                    # Skip "Download" link
+                    first_release = lines[i + 3] if i + 3 < len(lines) else ""
+                    end_support = lines[i + 4] if i + 4 < len(lines) else ""
+                    
+                    # Stop if we hit a non-release line
+                    if not status or status.startswith("Looking for"):
+                        break
+                    
+                    releases.append({
+                        'series': series,
+                        'status': status,
+                        'first_release': first_release,
+                        'end_of_support': end_support,
+                        'latest_version': None
+                    })
+                    i += 6  # Move to next release block
+                else:
+                    i += 1
+        
+        # Get the latest patch version for each series from release links
+        release_links = soup.find_all('span', class_='release-number')
+        series_versions: dict = {}
+        
+        for release in release_links:
+            link = release.find('a')
+            if link:
+                version_text = link.get_text(strip=True)
+                if version_text.startswith('Python '):
+                    ver = version_text.replace('Python ', '')
+                    if validate_version_string(ver):
+                        parts = ver.split('.')
+                        if len(parts) >= 2:
+                            series = f"{parts[0]}.{parts[1]}"
+                            if series not in series_versions:
+                                series_versions[series] = ver
+        
+        # Attach latest versions to releases
+        for rel in releases:
+            if rel['series'] in series_versions:
+                rel['latest_version'] = series_versions[rel['series']]
+        
+        return releases
+        
+    except Exception as e:
+        print(f"Error fetching active releases: {e}")
+        return []
+
+
+def get_available_python_versions(limit: int = 50) -> List[dict]:
+    """Fetch all available Python versions from python.org"""
+    URL = "https://www.python.org/downloads/"
+    versions = []
+    
+    try:
+        response = requests.get(URL, timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Find all release links
+        release_links = soup.find_all('span', class_='release-number')
+        
+        for release in release_links[:limit]:
+            link = release.find('a')
+            if link:
+                version_text = link.get_text(strip=True)
+                # Extract version number (e.g., "Python 3.12.1" -> "3.12.1")
+                if version_text.startswith('Python '):
+                    ver = version_text.replace('Python ', '')
+                    if validate_version_string(ver):
+                        versions.append({
+                            'version': ver,
+                            'url': f"https://www.python.org{link.get('href', '')}"
+                        })
+        
+        return versions
+        
+    except Exception as e:
+        print(f"Error fetching available versions: {e}")
+        return []
 
 
 def download_file(url: str, destination: str) -> bool:
@@ -577,6 +691,154 @@ def check():
     except KeyboardInterrupt:
         click.echo("\n\nOperation cancelled by user.")
         sys.exit(130)
+
+
+@cli.command()
+@click.argument('version')
+@click.option('--yes', '-y', is_flag=True, help='Skip confirmation prompt')
+def install(version, yes):
+    """Install a specific Python version
+    
+    Examples:
+        pyvm install 3.12.1
+        pyvm install 3.11.5 --yes
+    """
+    try:
+        # Validate version format
+        if not validate_version_string(version) or len(version.split('.')) < 3:
+            click.echo(f"Error: Invalid version format: {version}")
+            click.echo("Version must be in format: X.Y.Z (e.g., 3.12.1)")
+            sys.exit(1)
+        
+        local_ver = platform.python_version()
+        click.echo(f"Current Python: {local_ver}")
+        click.echo(f"Target version: {version}")
+        
+        # Check if same version
+        if local_ver == version:
+            click.echo(f"\nPython {version} is already your current version.")
+            sys.exit(0)
+        
+        os_name, arch = get_os_info()
+        click.echo(f"System: {os_name.title()} ({arch})")
+        
+        # Confirm installation
+        if not yes:
+            if not click.confirm(f"\nInstall Python {version}?"):
+                click.echo("Installation cancelled.")
+                sys.exit(0)
+        
+        click.echo(f"\nInstalling Python {version}...")
+        
+        # Perform installation based on OS
+        success = False
+        if os_name == 'windows':
+            success = update_python_windows(version)
+        elif os_name == 'linux':
+            success = update_python_linux(version)
+        elif os_name == 'darwin':
+            success = update_python_macos(version)
+        else:
+            click.echo(f"Unsupported operating system: {os_name}")
+            sys.exit(1)
+        
+        if success:
+            show_python_usage_instructions(version, os_name)
+        else:
+            click.echo("\nInstallation encountered issues. Check messages above.")
+            sys.exit(1)
+            
+    except KeyboardInterrupt:
+        click.echo("\n\nOperation cancelled.")
+        sys.exit(130)
+    except Exception as e:
+        click.echo(f"\nError: {e}")
+        sys.exit(1)
+
+
+@cli.command('list')
+@click.option('--all', '-a', 'show_all', is_flag=True, help='Show all versions including patch releases')
+def list_versions(show_all):
+    """List available Python versions
+    
+    By default shows active release series with their support status.
+    Use --all to see all individual patch versions.
+    """
+    try:
+        click.echo("Fetching Python versions...\n")
+        
+        local_ver = platform.python_version()
+        local_series = '.'.join(local_ver.split('.')[:2])
+        
+        if show_all:
+            # Show all individual versions
+            versions = get_available_python_versions(limit=100)
+            
+            if not versions:
+                click.echo("Could not fetch available versions.")
+                sys.exit(1)
+            
+            latest_ver, _ = get_latest_python_info_with_retry()
+            
+            click.echo(f"{'VERSION':<12} {'STATUS'}")
+            click.echo("-" * 40)
+            
+            for v in versions:
+                ver = v['version']
+                status = ""
+                if ver == local_ver:
+                    status = "(installed)"
+                elif latest_ver and ver == latest_ver:
+                    status = "(latest)"
+                
+                click.echo(f"{ver:<12} {status}")
+        else:
+            # Show active release series
+            releases = get_active_python_releases()
+            
+            if not releases:
+                click.echo("Could not fetch active releases.")
+                sys.exit(1)
+            
+            click.echo(f"{'SERIES':<10} {'LATEST':<12} {'STATUS':<15} {'SUPPORT UNTIL'}")
+            click.echo("-" * 55)
+            
+            for rel in releases:
+                series = rel['series']
+                latest = rel.get('latest_version') or '-'
+                status = rel.get('status', '')
+                end_support = rel.get('end_of_support', '')
+                
+                # Mark if this is the user's installed series
+                marker = ""
+                if series == local_series:
+                    marker = " *"
+                
+                # Color code status
+                if 'pre-release' in status.lower():
+                    status_display = "pre-release"
+                elif 'bugfix' in status.lower():
+                    status_display = "bugfix"
+                elif 'security' in status.lower():
+                    status_display = "security"
+                elif 'end of life' in status.lower():
+                    status_display = "end-of-life"
+                else:
+                    status_display = status
+                
+                click.echo(f"{series:<10} {latest:<12} {status_display:<15} {end_support}{marker}")
+            
+            click.echo(f"\n * = your installed version ({local_ver})")
+            click.echo(f"\nUse 'pyvm list --all' to see all patch versions")
+        
+        click.echo(f"Install with: pyvm install <version>")
+        
+    except KeyboardInterrupt:
+        click.echo("\n\nOperation cancelled.")
+        sys.exit(130)
+    except Exception as e:
+        click.echo(f"Error: {e}")
+        sys.exit(1)
 
 
 @cli.command()
