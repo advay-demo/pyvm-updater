@@ -43,7 +43,7 @@ echo ""
 # Install in editable mode
 $PIP_CMD install -e .
 
-if [ $? -eq 0 ]; then
+if [ $? -eq 0 ]; then   
     echo ""
     echo "=================================================="
     echo "  ✅ Installation successful!"
