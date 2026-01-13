@@ -4,24 +4,17 @@ Python Version Manager - TUI Interface
 A clean terminal user interface for managing Python versions
 """
 
-import platform
-import sys
 import asyncio
-import subprocess
-from typing import Optional, List
+import sys
+from typing import Optional
 
 try:
-    from textual.app import App, ComposeResult
-    from textual.containers import Container, Horizontal, Vertical
-    from textual.widgets import (
-        Header, Footer, Static, Button, Label,
-        LoadingIndicator, ListItem, ListView
-    )
-    from textual.binding import Binding
-    from textual.screen import Screen
     from textual import work
-    from textual.message import Message
-    from rich.text import Text
+    from textual.app import App, ComposeResult
+    from textual.binding import Binding
+    from textual.containers import Container, Horizontal, Vertical
+    from textual.screen import Screen
+    from textual.widgets import Button, Footer, Header, Label, ListItem, ListView, LoadingIndicator, Static
 except ImportError:
     print("ERROR: TUI mode requires the 'textual' package.")
     print("Install it with: pip install textual")
@@ -29,16 +22,13 @@ except ImportError:
 
 # Import from main module
 from python_version import (
-    get_os_info,
-    is_admin,
     check_python_version,
-    get_latest_python_info_with_retry,
     get_active_python_releases,
     get_installed_python_versions,
-    update_python_windows,
+    get_os_info,
     update_python_linux,
     update_python_macos,
-    validate_version_string,
+    update_python_windows,
 )
 
 
@@ -250,8 +240,8 @@ class MainScreen(Screen):
         self.local_ver: str = "..."
         self.latest_ver: Optional[str] = None
         self.needs_update: bool = False
-        self.installed_versions: List[dict] = []
-        self.available_releases: List[dict] = []
+        self.installed_versions: list[dict] = []
+        self.available_releases: list[dict] = []
         self.panels = ["installed-list", "available-list"]
         self.current_panel_idx = 1  # Start on available
 
@@ -259,10 +249,7 @@ class MainScreen(Screen):
         yield Header(show_clock=True)
 
         with Container(id="main-container"):
-            yield Static(
-                "[bold]PYTHON VERSION MANAGER[/bold]",
-                id="title-box"
-            )
+            yield Static("[bold]PYTHON VERSION MANAGER[/bold]", id="title-box")
 
             with Container(id="loading"):
                 yield LoadingIndicator()
@@ -270,7 +257,7 @@ class MainScreen(Screen):
 
             yield Static(
                 "[dim]Tab: switch panels | Arrow keys: navigate | Enter: install selected | R: refresh | U: update | Q: quit[/dim]",
-                id="hint-bar"
+                id="hint-bar",
             )
 
             with Horizontal(id="content-area"):
@@ -364,9 +351,7 @@ class MainScreen(Screen):
 
         try:
             # Check versions
-            local_ver, latest_ver, needs_update = await asyncio.to_thread(
-                check_python_version, True
-            )
+            local_ver, latest_ver, needs_update = await asyncio.to_thread(check_python_version, True)
             self.local_ver = local_ver
             self.latest_ver = latest_ver
             self.needs_update = needs_update
@@ -412,11 +397,11 @@ class MainScreen(Screen):
             return
 
         for v in self.installed_versions:
-            ver = v.get('version', 'Unknown')
-            path = v.get('path', '')
-            is_current = v.get('default', False)
+            ver = v.get("version", "Unknown")
+            path = v.get("path", "")
+            is_current = v.get("default", False)
             # Shorten path for display
-            short_path = path.split('/')[-1] if '/' in path else path.split('\\')[-1] if '\\' in path else ""
+            short_path = path.split("/")[-1] if "/" in path else path.split("\\")[-1] if "\\" in path else ""
             await installed_list.append(VersionItem(ver, short_path, is_current, False))
 
     async def _populate_available_list(self) -> None:
@@ -429,21 +414,21 @@ class MainScreen(Screen):
             return
 
         for rel in self.available_releases:
-            version = rel.get('latest_version', '')
-            status = rel.get('status', '')
+            version = rel.get("latest_version", "")
+            status = rel.get("status", "")
 
             # Shorten status
-            if 'pre-release' in status.lower():
-                status = 'prerelease'
-            elif 'bugfix' in status.lower():
-                status = 'active'
-            elif 'security' in status.lower():
-                status = 'security'
-            elif 'end of life' in status.lower():
-                status = 'EOL'
+            if "pre-release" in status.lower():
+                status = "prerelease"
+            elif "bugfix" in status.lower():
+                status = "active"
+            elif "security" in status.lower():
+                status = "security"
+            elif "end of life" in status.lower():
+                status = "EOL"
 
             if version:
-                is_current = version.startswith('.'.join(self.local_ver.split('.')[:2]))
+                is_current = version.startswith(".".join(self.local_ver.split(".")[:2]))
                 await available_list.append(VersionItem(version, status, is_current, True))
 
         # Select first item
@@ -457,7 +442,7 @@ class MainScreen(Screen):
     def run_install_with_suspend(self, version: str) -> None:
         """Run installation with TUI suspended so terminal output is visible"""
         from textual.app import SuspendNotSupported
-        
+
         os_name, _ = get_os_info()
         success = False
 
@@ -466,11 +451,11 @@ class MainScreen(Screen):
             print(f"Installing Python {version}")
             print(f"{'='*50}\n")
 
-            if os_name == 'windows':
+            if os_name == "windows":
                 return update_python_windows(version)
-            elif os_name == 'linux':
+            elif os_name == "linux":
                 return update_python_linux(version)
-            elif os_name == 'darwin':
+            elif os_name == "darwin":
                 return update_python_macos(version)
             else:
                 print(f"Unsupported OS: {os_name}")
@@ -482,9 +467,9 @@ class MainScreen(Screen):
                 success = do_installation()
                 print(f"\n{'='*50}")
                 if success:
-                    print(f"Installation complete!")
+                    print("Installation complete!")
                 else:
-                    print(f"Installation may have had issues.")
+                    print("Installation may have had issues.")
                 print(f"{'='*50}")
                 print("\nPress Enter to return to TUI...")
                 try:
@@ -585,14 +570,14 @@ class SuccessScreen(Screen):
         self.os_name = os_name
 
     def compose(self) -> ComposeResult:
-        parts = self.version.split('.')
+        parts = self.version.split(".")
         major_minor = f"{parts[0]}.{parts[1]}" if len(parts) >= 2 else self.version
 
         with Container(id="success-container"):
             yield Static("INSTALLATION COMPLETE", id="success-title")
             yield Static(f"Python {self.version} installed successfully.\n")
 
-            if self.os_name in ('linux', 'darwin'):
+            if self.os_name in ("linux", "darwin"):
                 instructions = f"""[bold]Usage:[/bold]
   python{major_minor} script.py
   python{major_minor} -m venv myenv

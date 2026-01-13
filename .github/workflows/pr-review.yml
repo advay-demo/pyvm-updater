@@ -178,8 +178,8 @@ jobs:
       
       - name: Run tests with coverage
         run: |
-          pytest --cov=. --cov-report=xml --cov-report=term-missing -v
-        continue-on-error: true  # Remove this once you have tests
+          # Exit code 5 means no tests collected, which is OK if you don't have tests yet
+          pytest --cov=. --cov-report=xml --cov-report=term-missing -v || [ $? -eq 5 ]
 
   # ============================================
   # Summary Job - Reports overall status
