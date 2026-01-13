@@ -26,12 +26,11 @@ from python_version import (
     get_active_python_releases,
     get_installed_python_versions,
     get_os_info,
-    update_python_linux,
-    update_python_macos,
-    remove_python_windows,
     remove_python_linux,
     remove_python_macos,
-    validate_version_string,
+    remove_python_windows,
+    update_python_linux,
+    update_python_macos,
 )
 
 

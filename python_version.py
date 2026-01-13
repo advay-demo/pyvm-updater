@@ -20,7 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from typing import Optional, Tuple, List, Dict
+from typing import Optional
 
 try:
     import click
@@ -844,7 +844,7 @@ def remove_python_windows(version_str: str) -> bool:
 
     # Priority 1: Try winget (handles MS Store and many installers)
     if shutil.which("winget"):
-        print(f"Attempting to uninstall via winget...")
+        print("Attempting to uninstall via winget...")
         # MS Store IDs usually follow: PythonSoftwareFoundation.Python.3.X
         # We try both the generic name and potential MS Store ID
         major_minor = ".".join(version_str.split(".")[:2])
@@ -1098,7 +1098,7 @@ def remove_python_macos(version_str: str) -> bool:
     return False
 
 
-def check_python_version(silent: bool = False) -> Tuple[str, Optional[str], bool]:
+def check_python_version(silent: bool = False) -> tuple[str, Optional[str], bool]:
     """
     Check local Python version against the latest stable version from python.org
     Returns: (local_version, latest_version, needs_update)
